@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Messenger
+Comment=Facebook Messenger Desktop App
+Exec=messenger-desktop %u
+Icon=messenger-desktop
+Terminal=false
+Type=Application
+Categories=Network;InstantMessaging;Chat;
+StartupWMClass=Messenger
+MimeType=x-scheme-handler/messenger;
+Keywords=messenger;facebook;chat;im;messaging;
