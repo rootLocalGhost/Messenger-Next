@@ -1,0 +1,117 @@
+name: Release Messenger Desktop
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: '--target x86_64-pc-windows-msvc'
+            target: 'x86_64-pc-windows-msvc'
+            asset_os: 'Windows'
+          - platform: 'ubuntu-22.04'
+            args: '--target x86_64-unknown-linux-gnu'
+            target: 'x86_64-unknown-linux-gnu'
+            asset_os: 'Linux'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 🦀 Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: ⚡ Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: 🐧 Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            squashfs-tools
+
+      - name: 📦 Install Node dependencies
+        run: npm ci
+
+      - name: 🔨 Build Frontend
+        run: npm run build
+
+      - name: 🚀 Build Tauri Application
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name || inputs.version }}
+          releaseName: 'Messenger Desktop ${{ github.ref_name || inputs.version }} 🚀'
+          releaseBody: |
+            # 🚀 Messenger Desktop Release `${{ github.ref_name || inputs.version }}`
+
+            Welcome to the new release of **Messenger Desktop**! A fast, lightweight native desktop wrapper for Facebook Messenger powered by **Tauri v2**, **SolidJS**, and **Rust**.
+
+            ---
+
+            ### ✨ Highlights & Features
+            - 🔔 **Native OS Notifications**: Real-time toast alerts with banner actions and sound when friends message you.
+            - 🔴 **Unread Badge Counter**: Live badge tracking in the System Tray and Titlebar.
+            - 🪟 **System Tray Integration**: Minimize or close to background system tray seamlessly.
+            - ⚡ **Ultra-Fast & Memory Efficient**: Uses your operating system's native Webview2 / WebKit engine with minimal RAM footprint.
+            - 🔗 **Smart Link Routing**: External links from chats automatically open in your default browser.
+            - 🚀 **Autostart Support**: Option to launch automatically on system boot.
+
+            ---
+
+            ### 📦 Download & Installation
+
+            #### 🪟 Windows (10 / 11)
+            - **`Messenger_${{ github.ref_name || inputs.version }}_x64-setup.exe`**: Standard NSIS Setup Installer.
+            - **`Messenger_${{ github.ref_name || inputs.version }}_x64_en-US.msi`**: Windows Enterprise / MSI Package.
+
+            #### 🐧 Linux (Ubuntu, Debian, Fedora, Arch Linux)
+            - **`Messenger_${{ github.ref_name || inputs.version }}_amd64.AppImage`**: Portable Linux AppImage (Works on all distributions).
+            - **`messenger_${{ github.ref_name || inputs.version }}_amd64.deb`**: Debian / Ubuntu package (`sudo dpkg -i messenger_*.deb`).
+            - **Arch Linux**: Build directly using the included `arch/PKGBUILD` via `makepkg -si`.
+
+            ---
+
+            ### 🛠️ Verification & Checksums
+            All binaries are signed and built via automated GitHub Actions CI/CD.
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
