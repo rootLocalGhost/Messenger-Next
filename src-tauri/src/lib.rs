@@ -140,21 +140,31 @@ pub fn run() {
                 eprintln!("[Messenger Desktop] Failed to create system tray: {}", e);
             }
 
-            // Setup main window and inject bridge
-            if let Some(window) = handle.get_webview_window("main") {
-                let window_clone = window.clone();
-                // Inject the bridge script immediately when DOM is ready
-                let _ = window.eval(PRELOAD_SCRIPT);
+            // Setup main window with initialization_script to guarantee bridge injection on every load
+            let window = tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::External("https://www.messenger.com".parse().unwrap()),
+            )
+            .title("Messenger")
+            .inner_size(1200.0, 800.0)
+            .min_inner_size(650.0, 500.0)
+            .resizable(true)
+            .center()
+            .decorations(true)
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+            .initialization_script(PRELOAD_SCRIPT)
+            .build()?;
 
-                window.on_window_event(move |event| {
-                    if let WindowEvent::CloseRequested { api, .. } = event {
-                        if settings_window_hook.close_to_tray.load(Ordering::Relaxed) {
-                            api.prevent_close();
-                            let _ = window_clone.hide();
-                        }
+            let window_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    if settings_window_hook.close_to_tray.load(Ordering::Relaxed) {
+                        api.prevent_close();
+                        let _ = window_clone.hide();
                     }
-                });
-            }
+                }
+            });
 
             Ok(())
         })

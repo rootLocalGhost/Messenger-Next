@@ -2,11 +2,30 @@
 (function () {
   console.log("[Messenger Desktop] Initializing Native Webview Bridge...");
 
-  // 1. Hook and Override Web Notifications
+  // 1. Hook navigator.permissions.query to always report notification permission as granted
+  if (navigator.permissions && navigator.permissions.query) {
+    const origQuery = navigator.permissions.query.bind(navigator.permissions);
+    navigator.permissions.query = function (param) {
+      if (param && param.name === "notifications") {
+        return Promise.resolve({
+          state: "granted",
+          name: "notifications",
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          dispatchEvent: () => false
+        });
+      }
+      return origQuery(param);
+    };
+  }
+
+  // 2. Hook and Override Web Notifications
   const OriginalNotification = window.Notification;
 
   class TauriProxyNotification {
     static permission = "granted";
+    static maxActions = 2;
 
     static async requestPermission(callback) {
       const perm = "granted";
@@ -41,7 +60,7 @@
           console.error("[Messenger Desktop] Error emitting native notification:", err);
         });
       } else {
-        console.warn("[Messenger Desktop] Tauri internals not yet ready, queued notification.");
+        console.warn("[Messenger Desktop] Tauri internals not ready for notification.");
       }
 
       if (typeof this.onshow === "function") {
@@ -56,7 +75,7 @@
     }
   }
 
-  // Assign Proxy
+  // Assign Proxy to window
   try {
     Object.defineProperty(window, "Notification", {
       get: () => TauriProxyNotification,
@@ -67,7 +86,36 @@
     window.Notification = TauriProxyNotification;
   }
 
-  // 2. Track Unread Message Count from Title & DOM
+  // 3. Hook ServiceWorker showNotification
+  if (typeof ServiceWorkerRegistration !== "undefined" && ServiceWorkerRegistration.prototype) {
+    const originalShowNotification = ServiceWorkerRegistration.prototype.showNotification;
+    ServiceWorkerRegistration.prototype.showNotification = function (title, options = {}) {
+      console.log(`[Messenger Desktop] SW Intercepted Notification: "${title}"`);
+      const body = (options && options.body) || "";
+      const icon = (options && options.icon) || "";
+      const tag = (options && options.tag) || "";
+
+      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+        window.__TAURI_INTERNALS__.invoke("emit_native_notification", {
+          title: String(title),
+          body: String(body),
+          icon: String(icon),
+          tag: String(tag)
+        }).catch(() => {});
+      }
+
+      if (typeof originalShowNotification === "function") {
+        try {
+          return originalShowNotification.call(this, title, options);
+        } catch (e) {
+          return Promise.resolve();
+        }
+      }
+      return Promise.resolve();
+    };
+  }
+
+  // 4. Track Unread Message Count from Title & DOM
   let lastUnreadCount = 0;
 
   function checkUnreadCount() {
@@ -104,14 +152,12 @@
     const observer = new MutationObserver(() => checkUnreadCount());
     observer.observe(titleEl, { subtree: true, characterData: true, childList: true });
   } else {
-    // If title element not yet in DOM, check on intervals
     setInterval(checkUnreadCount, 1500);
   }
 
-  // Periodic poll fallback
   setInterval(checkUnreadCount, 2500);
 
-  // 3. Intercept External Links to Open in Default System Browser
+  // 5. Intercept External Links to Open in Default System Browser
   document.addEventListener("click", function (e) {
     const target = e.target.closest("a");
     if (!target || !target.href) return;
