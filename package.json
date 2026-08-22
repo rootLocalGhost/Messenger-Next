@@ -2,11 +2,13 @@
   "name": "messenger-desktop",
   "private": true,
   "version": "1.0.0",
+  "description": "Production Native Desktop Client for Facebook Messenger",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "tsc --noEmit",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -2101,7 +2101,6 @@ dependencies = [
 name = "messenger-desktop"
 version = "1.0.0"
 dependencies = [
- "log",
  "serde",
  "serde_json",
  "tauri",
