@@ -1,0 +1,21 @@
+# Node
+node_modules/
+dist/
+.vite/
+
+# Tauri & Rust
+src-tauri/target/
+src-tauri/gen/
+
+# Environment and IDE
+.DS_Store
+*.local
+.env
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
