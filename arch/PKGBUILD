@@ -1,0 +1,38 @@
+# Maintainer: localghost <contact@example.com>
+pkgname=messenger-desktop
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Facebook Messenger desktop application with native notifications built with Tauri v2"
+arch=('x86_64' 'aarch64')
+url="https://github.com/localghost/messenger-desktop"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'libayatana-appindicator' 'openssl' 'gtk3')
+makedepends=('cargo' 'nodejs' 'npm' 'git')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        "messenger-desktop.desktop")
+sha256sums=('SKIP'
+            'SKIP')
+
+build() {
+    cd "$srcdir/$pkgname-$pkgver"
+    export RUSTUP_TOOLCHAIN=stable
+    npm ci
+    npm run build
+    cargo build --release --manifest-path src-tauri/Cargo.toml
+}
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Install binary
+    install -Dm755 "src-tauri/target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
+
+    # Install Desktop Entry
+    install -Dm644 "$srcdir/messenger-desktop.desktop" "$pkgdir/usr/share/applications/messenger-desktop.desktop"
+
+    # Install Icons
+    install -Dm644 "src-tauri/icons/32x32.png" "$pkgdir/usr/share/icons/hicolor/32x32/apps/messenger-desktop.png"
+    install -Dm644 "src-tauri/icons/128x128.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/messenger-desktop.png"
+    install -Dm644 "src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/messenger-desktop.png"
+    install -Dm644 "src-tauri/icons/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/messenger-desktop.png"
+}
