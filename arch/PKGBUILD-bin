@@ -1,0 +1,53 @@
+# Maintainer: rootLocalGhost <rootlocalghost@gmail.com>
+pkgname=messenger-desktop-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Facebook Messenger desktop application with native notifications (pre-built binary)"
+arch=('x86_64')
+url="https://github.com/rootLocalGhost/Messenger-Next"
+license=('MIT')
+depends=(
+    'webkit2gtk-4.1'
+    'gtk3'
+    'libayatana-appindicator'
+    'openssl'
+    'cairo'
+    'gdk-pixbuf2'
+    'glib2'
+    'pango'
+    'hicolor-icon-theme'
+)
+provides=('messenger-desktop')
+conflicts=('messenger-desktop')
+
+_appimage="Messenger_${pkgver}_amd64.AppImage"
+source_x86_64=("https://github.com/rootLocalGhost/Messenger-Next/releases/download/v${pkgver}/${_appimage}"
+               "messenger-desktop.desktop")
+sha256sums_x86_64=('SKIP'
+                   'SKIP')
+
+prepare() {
+    cd "${srcdir}"
+    chmod +x "${_appimage}"
+    ./"${_appimage}" --appimage-extract >/dev/null 2>&1 || true
+}
+
+package() {
+    cd "${srcdir}"
+
+    # Install binary
+    install -Dm755 "squashfs-root/usr/bin/messenger-desktop" "${pkgdir}/usr/bin/messenger-desktop"
+
+    # Install desktop entry
+    install -Dm644 "${srcdir}/messenger-desktop.desktop" "${pkgdir}/usr/share/applications/messenger-desktop.desktop"
+
+    # Install icons
+    install -Dm644 "squashfs-root/usr/share/icons/hicolor/32x32/apps/messenger-desktop.png" \
+        "${pkgdir}/usr/share/icons/hicolor/32x32/apps/messenger-desktop.png" 2>/dev/null || true
+    install -Dm644 "squashfs-root/usr/share/icons/hicolor/128x128/apps/messenger-desktop.png" \
+        "${pkgdir}/usr/share/icons/hicolor/128x128/apps/messenger-desktop.png" 2>/dev/null || true
+    install -Dm644 "squashfs-root/usr/share/icons/hicolor/256x256@2/apps/messenger-desktop.png" \
+        "${pkgdir}/usr/share/icons/hicolor/256x256/apps/messenger-desktop.png" 2>/dev/null || true
+    install -Dm644 "squashfs-root/usr/share/icons/hicolor/512x512/apps/messenger-desktop.png" \
+        "${pkgdir}/usr/share/icons/hicolor/512x512/apps/messenger-desktop.png" 2>/dev/null || true
+}
