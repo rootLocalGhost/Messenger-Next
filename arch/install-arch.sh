@@ -39,7 +39,7 @@ if [ -n "${ZST_URL}" ]; then
     curl -L --progress-bar -o "${TARGET_FILE}" "${ZST_URL}"
     
     echo "📦 Installing package via pacman..."
-    sudo pacman -U --needed --noconfirm "${TARGET_FILE}"
+    sudo pacman -U --needed --noconfirm --overwrite '*' "${TARGET_FILE}"
     
     echo "========================================================="
     echo " ✨ ${APP_NAME} installed successfully!"
