@@ -35,6 +35,22 @@ jobs:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
 
+      - name: 🏷️ Set Release Version & Tag
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="v1.0.0"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Using TAG: ${TAG}, VERSION: ${VERSION}"
+
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -71,8 +87,7 @@ jobs:
       - name: 🏷️ Sync Project Version with Release Tag
         shell: bash
         run: |
-          RAW_TAG="${{ github.ref_type == 'tag' && github.ref_name || inputs.version || '1.0.0' }}"
-          VERSION="${RAW_TAG#v}"
+          VERSION="${{ steps.vars.outputs.version }}"
           echo "Synchronizing project files to release version: $VERSION"
 
           # Update package.json
@@ -101,10 +116,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }}
-          releaseName: 'Messenger Desktop ${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }} 🚀'
+          tagName: ${{ steps.vars.outputs.tag }}
+          releaseName: 'Messenger Desktop ${{ steps.vars.outputs.tag }} 🚀'
           releaseBody: |
-            # 🚀 Messenger Desktop Release `${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }}`
+            # 🚀 Messenger Desktop Release `${{ steps.vars.outputs.tag }}`
 
             Welcome to the new release of **Messenger Desktop**! A fast, lightweight native desktop wrapper for Facebook Messenger powered by **Tauri v2**, **SolidJS**, and **Rust**.
 
@@ -129,7 +144,8 @@ jobs:
             #### 🐧 Linux (Ubuntu, Debian, Fedora, Arch Linux)
             - **`Messenger_*_amd64.AppImage`**: Portable Linux AppImage (Works on all distributions).
             - **`messenger-desktop_*_amd64.deb`**: Debian / Ubuntu package (`sudo dpkg -i messenger-desktop_*.deb`).
-            - **Arch Linux**: Build and install directly using `arch/install-arch.sh` or `arch/PKGBUILD` via `makepkg -si`.
+            - **`messenger-desktop-*-1-x86_64.pkg.tar.zst`**: Native Arch Linux package.
+            - **Arch Linux One-Command Installer**: `curl -fsSL https://raw.githubusercontent.com/rootLocalGhost/Messenger-Next/main/arch/install-arch.sh | bash`
 
             ---
 
@@ -144,8 +160,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RAW_TAG="${{ github.ref_type == 'tag' && github.ref_name || inputs.version || '1.0.0' }}"
-          VERSION="${RAW_TAG#v}"
+          VERSION="${{ steps.vars.outputs.version }}"
           PKG_NAME="messenger-desktop"
           ARCH_PKG_NAME="${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
 
@@ -193,4 +208,4 @@ conflict = ${PKG_NAME}-bin
 EOF
 
           (cd "${PKG_DIR}" && tar -c --zstd -f "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" .PKGINFO usr)
-          gh release upload "${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }}" "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" --clobber
+          gh release upload "${{ steps.vars.outputs.tag }}" "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" --clobber
