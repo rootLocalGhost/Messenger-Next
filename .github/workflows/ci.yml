@@ -58,7 +58,7 @@ jobs:
             squashfs-tools
 
       - name: 📦 Install Node dependencies
-        run: npm ci
+        run: npm ci || npm install
 
       - name: 🔍 TypeScript & Frontend Build Validation
         run: npm run build
