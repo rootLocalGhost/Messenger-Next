@@ -243,6 +243,31 @@ const PRELOAD_SCRIPT: &str = include_str!("../../src/bridge/preload.js");
 // Modern Desktop Chrome User Agent
 const DESKTOP_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
+pub fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    } else if let Some(window) = app.get_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    if let Some(webview) = app.get_webview("messenger") {
+        let _ = webview.show();
+        let _ = webview.set_focus();
+    }
+}
+
+pub fn hide_main_window(app: &AppHandle) {
+    if let Some(webview) = app.get_webview("messenger") {
+        let _ = webview.hide();
+    }
+    if let Some(window) = app.get_window("main") {
+        let _ = window.hide();
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let state = AppState::default();
@@ -257,11 +282,7 @@ pub fn run() {
             Some(vec!["--minimized"]),
         ))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
-            }
+            show_main_window(app);
         }))
         .invoke_handler(tauri::generate_handler![
             trigger_native_notification,
@@ -301,18 +322,10 @@ pub fn run() {
                 .tooltip("Messenger Desktop")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
+                        show_main_window(app);
                     }
                     "chats" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
+                        show_main_window(app);
                         let _ = navigate_messenger(app.clone(), "/".to_string());
                     }
                     "test_notif" => {
@@ -321,7 +334,7 @@ pub fn run() {
                             app.clone(),
                             state,
                             "Messenger".to_string(),
-                            Some("Windows notifications are active and connected!".to_string()),
+                            Some("Desktop notifications are active and connected!".to_string()),
                             None,
                             Some("test".to_string()),
                             Some("https://www.messenger.com".to_string()),
@@ -333,24 +346,28 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            if let Ok(visible) = window.is_visible() {
-                                if visible {
-                                    let _ = window.hide();
-                                } else {
-                                    let _ = window.show();
-                                    let _ = window.unminimize();
-                                    let _ = window.set_focus();
-                                }
+                    match event {
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        }
+                        | TrayIconEvent::DoubleClick {
+                            button: MouseButton::Left,
+                            ..
+                        } => {
+                            let app = tray.app_handle();
+                            let is_visible = app
+                                .get_window("main")
+                                .and_then(|w| w.is_visible().ok())
+                                .unwrap_or(false);
+                            if is_visible {
+                                hide_main_window(app);
+                            } else {
+                                show_main_window(app);
                             }
                         }
+                        _ => {}
                     }
                 })
                 .build(app)?;
@@ -358,8 +375,8 @@ pub fn run() {
             // Setup Messenger Child Webview under the titlebar (y: 44px)
             let handle = app.handle();
             if let Some(main_window) = handle.get_window("main") {
-                let window_size = main_window.inner_size().unwrap_or(tauri::PhysicalSize::new(1200, 840));
                 let scale_factor = main_window.scale_factor().unwrap_or(1.0);
+                let window_size = main_window.inner_size().unwrap_or(tauri::PhysicalSize::new(1200, 840));
                 let titlebar_height_logical = 44.0;
 
                 let webview_builder = tauri::webview::WebviewBuilder::new(
@@ -369,17 +386,18 @@ pub fn run() {
                 .user_agent(DESKTOP_USER_AGENT)
                 .initialization_script(PRELOAD_SCRIPT);
 
-                let pos = tauri::LogicalPosition::new(0.0, titlebar_height_logical);
-                let size = tauri::LogicalSize::new(
-                    window_size.width as f64 / scale_factor,
-                    (window_size.height as f64 / scale_factor) - titlebar_height_logical,
-                );
+                let pos = tauri::Position::Logical(tauri::LogicalPosition::new(0.0, titlebar_height_logical));
+                let initial_width = window_size.width as f64 / scale_factor;
+                let initial_height = (window_size.height as f64 / scale_factor) - titlebar_height_logical;
+                let size = tauri::Size::Logical(tauri::LogicalSize::new(
+                    initial_width,
+                    initial_height.max(50.0),
+                ));
 
                 // Add child webview to main window
                 match main_window.add_child(webview_builder, pos, size) {
                     Ok(child_webview) => {
                         let webview_clone = child_webview.clone();
-                        let scale_clone = scale_factor;
                         let main_win_clone = main_window.clone();
 
                         // Listen for window close and resize events
@@ -388,15 +406,31 @@ pub fn run() {
                                 tauri::WindowEvent::CloseRequested { api, .. } => {
                                     if close_to_tray_ref.load(Ordering::Relaxed) {
                                         api.prevent_close();
+                                        let _ = webview_clone.hide();
                                         let _ = main_win_clone.hide();
                                     }
                                 }
                                 tauri::WindowEvent::Resized(new_size) => {
-                                    let new_width_logical = new_size.width as f64 / scale_clone;
-                                    let new_height_logical = (new_size.height as f64 / scale_clone) - 44.0;
-                                    let _ = webview_clone.set_size(tauri::LogicalSize::new(
-                                        new_width_logical,
-                                        new_height_logical.max(100.0),
+                                    let current_scale = main_win_clone.scale_factor().unwrap_or(1.0);
+                                    let titlebar_h_logical = 44.0;
+                                    let new_width_logical = new_size.width as f64 / current_scale;
+                                    let new_height_logical = (new_size.height as f64 / current_scale) - titlebar_h_logical;
+                                    let _ = webview_clone.set_position(tauri::Position::Logical(
+                                        tauri::LogicalPosition::new(0.0, titlebar_h_logical),
+                                    ));
+                                    let _ = webview_clone.set_size(tauri::Size::Logical(
+                                        tauri::LogicalSize::new(new_width_logical, new_height_logical.max(50.0)),
+                                    ));
+                                }
+                                tauri::WindowEvent::ScaleFactorChanged { scale_factor, new_inner_size, .. } => {
+                                    let titlebar_h_logical = 44.0;
+                                    let new_width_logical = new_inner_size.width as f64 / scale_factor;
+                                    let new_height_logical = (new_inner_size.height as f64 / scale_factor) - titlebar_h_logical;
+                                    let _ = webview_clone.set_position(tauri::Position::Logical(
+                                        tauri::LogicalPosition::new(0.0, titlebar_h_logical),
+                                    ));
+                                    let _ = webview_clone.set_size(tauri::Size::Logical(
+                                        tauri::LogicalSize::new(new_width_logical, new_height_logical.max(50.0)),
                                     ));
                                 }
                                 _ => {}
