@@ -1,7 +1,7 @@
 # Maintainer: rootLocalGhost <rootlocalghost@gmail.com>
 pkgname=messenger-desktop-bin
 _pkgname=Messenger-Next
-pkgver=1.0.7
+pkgver=1.0.8
 pkgrel=1
 pkgdesc="Facebook Messenger desktop application with native notifications (pre-built binary)"
 arch=('x86_64')
