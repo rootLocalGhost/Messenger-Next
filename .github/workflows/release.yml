@@ -65,10 +65,33 @@ jobs:
             libssl-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            squashfs-tools
+            squashfs-tools \
+            rpm
+
+      - name: 🏷️ Sync Project Version with Release Tag
+        shell: bash
+        run: |
+          RAW_TAG="${{ github.ref_type == 'tag' && github.ref_name || inputs.version || '1.0.0' }}"
+          VERSION="${RAW_TAG#v}"
+          echo "Synchronizing project files to release version: $VERSION"
+
+          # Update package.json
+          npm version "$VERSION" --no-git-tag-version --allow-same-version || true
+
+          # Update tauri.conf.json
+          node -e "
+            const fs = require('fs');
+            const file = './src-tauri/tauri.conf.json';
+            const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+            json.version = '$VERSION';
+            fs.writeFileSync(file, JSON.stringify(json, null, 2));
+          "
+
+          # Update Cargo.toml
+          sed -i.bak -E "0,/^version = .*/s//version = \"$VERSION\"/" ./src-tauri/Cargo.toml && rm -f ./src-tauri/Cargo.toml.bak
 
       - name: 📦 Install Node dependencies
-        run: npm ci
+        run: npm ci || npm install
 
       - name: 🔨 Build Frontend
         run: npm run build
@@ -78,10 +101,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name || inputs.version }}
-          releaseName: 'Messenger Desktop ${{ github.ref_name || inputs.version }} 🚀'
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }}
+          releaseName: 'Messenger Desktop ${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }} 🚀'
           releaseBody: |
-            # 🚀 Messenger Desktop Release `${{ github.ref_name || inputs.version }}`
+            # 🚀 Messenger Desktop Release `${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }}`
 
             Welcome to the new release of **Messenger Desktop**! A fast, lightweight native desktop wrapper for Facebook Messenger powered by **Tauri v2**, **SolidJS**, and **Rust**.
 
@@ -100,18 +123,74 @@ jobs:
             ### 📦 Download & Installation
 
             #### 🪟 Windows (10 / 11)
-            - **`Messenger_${{ github.ref_name || inputs.version }}_x64-setup.exe`**: Standard NSIS Setup Installer.
-            - **`Messenger_${{ github.ref_name || inputs.version }}_x64_en-US.msi`**: Windows Enterprise / MSI Package.
+            - **`Messenger_*_x64-setup.exe`**: Standard NSIS Setup Installer.
+            - **`Messenger_*_x64_en-US.msi`**: Windows Enterprise / MSI Package.
 
             #### 🐧 Linux (Ubuntu, Debian, Fedora, Arch Linux)
-            - **`Messenger_${{ github.ref_name || inputs.version }}_amd64.AppImage`**: Portable Linux AppImage (Works on all distributions).
-            - **`messenger_${{ github.ref_name || inputs.version }}_amd64.deb`**: Debian / Ubuntu package (`sudo dpkg -i messenger_*.deb`).
-            - **Arch Linux**: Build directly using the included `arch/PKGBUILD` via `makepkg -si`.
+            - **`Messenger_*_amd64.AppImage`**: Portable Linux AppImage (Works on all distributions).
+            - **`messenger-desktop_*_amd64.deb`**: Debian / Ubuntu package (`sudo dpkg -i messenger-desktop_*.deb`).
+            - **Arch Linux**: Build and install directly using `arch/install-arch.sh` or `arch/PKGBUILD` via `makepkg -si`.
 
             ---
 
             ### 🛠️ Verification & Checksums
-            All binaries are signed and built via automated GitHub Actions CI/CD.
+            All binaries are built and signed via automated GitHub Actions CI/CD.
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: 🏹 Build & Upload Arch Linux .pkg.tar.zst Package
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RAW_TAG="${{ github.ref_type == 'tag' && github.ref_name || inputs.version || '1.0.0' }}"
+          VERSION="${RAW_TAG#v}"
+          PKG_NAME="messenger-desktop"
+          ARCH_PKG_NAME="${PKG_NAME}-${VERSION}-1-x86_64.pkg.tar.zst"
+
+          echo "Packaging ${ARCH_PKG_NAME}..."
+          PKG_DIR=$(mktemp -d)
+          mkdir -p "${PKG_DIR}/usr/bin"
+          mkdir -p "${PKG_DIR}/usr/share/applications"
+          mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/32x32/apps"
+          mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/128x128/apps"
+          mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps"
+          mkdir -p "${PKG_DIR}/usr/share/icons/hicolor/512x512/apps"
+
+          cp "src-tauri/target/${{ matrix.target }}/release/${PKG_NAME}" "${PKG_DIR}/usr/bin/${PKG_NAME}" 2>/dev/null || cp "src-tauri/target/release/${PKG_NAME}" "${PKG_DIR}/usr/bin/${PKG_NAME}"
+          cp "arch/${PKG_NAME}.desktop" "${PKG_DIR}/usr/share/applications/${PKG_NAME}.desktop"
+          cp "src-tauri/icons/32x32.png" "${PKG_DIR}/usr/share/icons/hicolor/32x32/apps/${PKG_NAME}.png"
+          cp "src-tauri/icons/128x128.png" "${PKG_DIR}/usr/share/icons/hicolor/128x128/apps/${PKG_NAME}.png"
+          cp "src-tauri/icons/128x128@2x.png" "${PKG_DIR}/usr/share/icons/hicolor/256x256/apps/${PKG_NAME}.png"
+          cp "src-tauri/icons/icon.png" "${PKG_DIR}/usr/share/icons/hicolor/512x512/apps/${PKG_NAME}.png"
+
+          INSTALLED_SIZE=$(du -sb "${PKG_DIR}/usr" | awk '{print $1}')
+          BUILDDATE=$(date +%s)
+
+          cat <<EOF > "${PKG_DIR}/.PKGINFO"
+pkgname = ${PKG_NAME}
+pkgbase = ${PKG_NAME}
+pkgver = ${VERSION}-1
+pkgdesc = Facebook Messenger desktop application with native notifications built with Tauri v2
+url = https://github.com/rootLocalGhost/Messenger-Next
+builddate = ${BUILDDATE}
+packager = rootLocalGhost <rootlocalghost@gmail.com>
+size = ${INSTALLED_SIZE}
+arch = x86_64
+license = MIT
+depend = webkit2gtk-4.1
+depend = gtk3
+depend = libayatana-appindicator
+depend = openssl
+depend = cairo
+depend = gdk-pixbuf2
+depend = glib2
+depend = pango
+depend = hicolor-icon-theme
+provides = ${PKG_NAME}
+conflict = ${PKG_NAME}-bin
+EOF
+
+          (cd "${PKG_DIR}" && tar -c --zstd -f "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" .PKGINFO usr)
+          gh release upload "${{ github.ref_type == 'tag' && github.ref_name || inputs.version || 'v1.0.0' }}" "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" --clobber
