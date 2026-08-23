@@ -127,8 +127,7 @@ if [ -f "${REPO_ROOT}/package.json" ] && [ -d "${REPO_ROOT}/src-tauri" ]; then
     
     cd "${REPO_ROOT}"
     npm ci || npm install
-    npm run build
-    cargo build --release --manifest-path src-tauri/Cargo.toml
+    npx tauri build --no-bundle
     
     sudo install -Dm755 "${REPO_ROOT}/src-tauri/target/release/${BIN_NAME}" "/usr/local/bin/${BIN_NAME}"
     sudo install -Dm644 "${SCRIPT_DIR}/messenger-desktop.desktop" "/usr/share/applications/messenger-desktop.desktop"
