@@ -34,8 +34,15 @@ A modern, blazing-fast, memory-efficient desktop application for **Facebook Mess
   sudo apt-get install -f # Fix any missing dependencies
   ```
 
-### 🏹 Arch Linux
-To build and install the native Arch package using `PKGBUILD`:
+### 🏹 Arch Linux / Manjaro / EndeavourOS
+
+#### ⚡ One-Command Instant Install (Zero compilation / No build tools needed):
+```bash
+curl -fsSL https://raw.githubusercontent.com/rootLocalGhost/Messenger-Next/main/arch/install-arch.sh | bash
+```
+*(Or run `./arch/install-arch.sh` from the repository)*
+
+#### 📦 Using PKGBUILD with makepkg:
 ```bash
 cd arch
 makepkg -si
