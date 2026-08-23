@@ -35,7 +35,7 @@ pub struct NotificationPayload {
     pub url: Option<String>,
 }
 
-// Command: Trigger native Windows notification
+// Command: Trigger native OS desktop notification (Linux DBus / Windows Toast)
 #[tauri::command]
 fn trigger_native_notification(
     app: AppHandle,
@@ -61,7 +61,7 @@ fn trigger_native_notification(
     // Emit event to SolidJS frontend so in-app drawer receives it
     let _ = app.emit("notification-received", &payload);
 
-    // Build and send Windows native notification
+    // Build and send native OS notification via DBus (Linux) or Windows Toast
     let mut builder = app
         .notification()
         .builder()
