@@ -183,29 +183,29 @@ jobs:
           INSTALLED_SIZE=$(du -sb "${PKG_DIR}/usr" | awk '{print $1}')
           BUILDDATE=$(date +%s)
 
-          cat <<EOF > "${PKG_DIR}/.PKGINFO"
-pkgname = ${PKG_NAME}
-pkgbase = ${PKG_NAME}
-pkgver = ${VERSION}-1
-pkgdesc = Facebook Messenger desktop application with native notifications built with Tauri v2
-url = https://github.com/rootLocalGhost/Messenger-Next
-builddate = ${BUILDDATE}
-packager = rootLocalGhost <rootlocalghost@gmail.com>
-size = ${INSTALLED_SIZE}
-arch = x86_64
-license = MIT
-depend = webkit2gtk-4.1
-depend = gtk3
-depend = libayatana-appindicator
-depend = openssl
-depend = cairo
-depend = gdk-pixbuf2
-depend = glib2
-depend = pango
-depend = hicolor-icon-theme
-provides = ${PKG_NAME}
-conflict = ${PKG_NAME}-bin
-EOF
+          {
+            echo "pkgname = ${PKG_NAME}"
+            echo "pkgbase = ${PKG_NAME}"
+            echo "pkgver = ${VERSION}-1"
+            echo "pkgdesc = Facebook Messenger desktop application with native notifications built with Tauri v2"
+            echo "url = https://github.com/rootLocalGhost/Messenger-Next"
+            echo "builddate = ${BUILDDATE}"
+            echo "packager = rootLocalGhost <rootlocalghost@gmail.com>"
+            echo "size = ${INSTALLED_SIZE}"
+            echo "arch = x86_64"
+            echo "license = MIT"
+            echo "depend = webkit2gtk-4.1"
+            echo "depend = gtk3"
+            echo "depend = libayatana-appindicator"
+            echo "depend = openssl"
+            echo "depend = cairo"
+            echo "depend = gdk-pixbuf2"
+            echo "depend = glib2"
+            echo "depend = pango"
+            echo "depend = hicolor-icon-theme"
+            echo "provides = ${PKG_NAME}"
+            echo "conflict = ${PKG_NAME}-bin"
+          } > "${PKG_DIR}/.PKGINFO"
 
           (cd "${PKG_DIR}" && tar -c --zstd -f "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" .PKGINFO usr)
           gh release upload "${{ steps.vars.outputs.tag }}" "${GITHUB_WORKSPACE}/${ARCH_PKG_NAME}" --clobber
