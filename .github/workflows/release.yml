@@ -86,24 +86,37 @@ jobs:
 
       - name: 🏷️ Sync Project Version with Release Tag
         shell: bash
+        env:
+          APP_VERSION: ${{ steps.vars.outputs.version }}
         run: |
-          VERSION="${{ steps.vars.outputs.version }}"
-          echo "Synchronizing project files to release version: $VERSION"
+          RAW_VER="${APP_VERSION:-1.0.8}"
+          CLEAN_VER=$(echo "$RAW_VER" | sed -E 's/^v//' | tr -d '[:space:]')
+          echo "Synchronizing project files to clean semver: '$CLEAN_VER'"
 
           # Update package.json
-          npm version "$VERSION" --no-git-tag-version --allow-same-version || true
+          npm version "$CLEAN_VER" --no-git-tag-version --allow-same-version || true
 
           # Update tauri.conf.json
           node -e "
             const fs = require('fs');
+            const ver = process.argv[1];
             const file = './src-tauri/tauri.conf.json';
             const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-            json.version = '$VERSION';
-            fs.writeFileSync(file, JSON.stringify(json, null, 2));
-          "
+            json.version = ver;
+            fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
+            console.log('tauri.conf.json version set to:', json.version);
+          " "$CLEAN_VER"
 
           # Update Cargo.toml
-          sed -i.bak -E "0,/^version = .*/s//version = \"$VERSION\"/" ./src-tauri/Cargo.toml && rm -f ./src-tauri/Cargo.toml.bak
+          node -e "
+            const fs = require('fs');
+            const ver = process.argv[1];
+            const file = './src-tauri/Cargo.toml';
+            let content = fs.readFileSync(file, 'utf8');
+            content = content.replace(/^version\s*=\s*\"[^\"]+\"/m, 'version = \"' + ver + '\"');
+            fs.writeFileSync(file, content);
+            console.log('Cargo.toml version set to:', ver);
+          " "$CLEAN_VER"
 
       - name: 📦 Install Node dependencies
         run: npm ci || npm install
@@ -116,8 +129,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ steps.vars.outputs.tag }}
-          releaseName: 'Messenger Desktop ${{ steps.vars.outputs.tag }} 🚀'
+          tagName: v__VERSION__
+          releaseName: 'Messenger Desktop v__VERSION__ 🚀'
           releaseBody: |
             # 🚀 Messenger Desktop Release `${{ steps.vars.outputs.tag }}`
 
