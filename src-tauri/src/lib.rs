@@ -114,7 +114,7 @@ fn update_unread_count(
     }
 
     // Update system tray tooltip
-    if let Some(tray) = app.tray_by_id("main-tray") {
+    if let Some(tray) = app.tray_by_id("messenger-desktop-tray") {
         let tooltip = if count > 0 {
             format!("Messenger Desktop - {} unread message{}", count, if count > 1 { "s" } else { "" })
         } else {
@@ -243,19 +243,32 @@ const PRELOAD_SCRIPT: &str = include_str!("../../src/bridge/preload.js");
 // Modern Desktop Chrome User Agent
 const DESKTOP_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
-pub fn show_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
-    } else if let Some(window) = app.get_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+pub fn update_child_bounds(window: &tauri::Window, webview: &tauri::Webview) {
+    if let Ok(size) = window.inner_size() {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let titlebar_h_physical = (44.0 * scale).round() as u32;
+        let target_width = size.width;
+        let target_height = size.height.saturating_sub(titlebar_h_physical);
+
+        let _ = webview.set_position(tauri::Position::Physical(
+            tauri::PhysicalPosition::new(0, titlebar_h_physical as i32),
+        ));
+        let _ = webview.set_size(tauri::Size::Physical(
+            tauri::PhysicalSize::new(target_width, target_height.max(50)),
+        ));
     }
-    if let Some(webview) = app.get_webview("messenger") {
-        let _ = webview.show();
-        let _ = webview.set_focus();
+}
+
+pub fn show_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        if let Some(webview) = app.get_webview("messenger") {
+            let _ = webview.show();
+            let _ = webview.set_focus();
+            update_child_bounds(&window, &webview);
+        }
     }
 }
 
@@ -316,7 +329,7 @@ pub fn run() {
                 None => tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")).unwrap(),
             };
 
-            let _tray = TrayIconBuilder::with_id("main-tray")
+            let _tray = TrayIconBuilder::with_id("messenger-desktop-tray")
                 .icon(icon)
                 .menu(&tray_menu)
                 .tooltip("Messenger Desktop")
@@ -377,7 +390,7 @@ pub fn run() {
             if let Some(main_window) = handle.get_window("main") {
                 let scale_factor = main_window.scale_factor().unwrap_or(1.0);
                 let window_size = main_window.inner_size().unwrap_or(tauri::PhysicalSize::new(1200, 840));
-                let titlebar_height_logical = 44.0;
+                let titlebar_h_physical = (44.0 * scale_factor).round() as u32;
 
                 let webview_builder = tauri::webview::WebviewBuilder::new(
                     "messenger",
@@ -386,12 +399,12 @@ pub fn run() {
                 .user_agent(DESKTOP_USER_AGENT)
                 .initialization_script(PRELOAD_SCRIPT);
 
-                let pos = tauri::Position::Logical(tauri::LogicalPosition::new(0.0, titlebar_height_logical));
-                let initial_width = window_size.width as f64 / scale_factor;
-                let initial_height = (window_size.height as f64 / scale_factor) - titlebar_height_logical;
-                let size = tauri::Size::Logical(tauri::LogicalSize::new(
-                    initial_width,
-                    initial_height.max(50.0),
+                let pos = tauri::Position::Physical(tauri::PhysicalPosition::new(0, titlebar_h_physical as i32));
+                let target_width = window_size.width;
+                let target_height = window_size.height.saturating_sub(titlebar_h_physical);
+                let size = tauri::Size::Physical(tauri::PhysicalSize::new(
+                    target_width,
+                    target_height.max(50),
                 ));
 
                 // Add child webview to main window
@@ -400,7 +413,18 @@ pub fn run() {
                         let webview_clone = child_webview.clone();
                         let main_win_clone = main_window.clone();
 
-                        // Listen for window close and resize events
+                        // Immediate and delayed bounds adjustments to prevent black borders
+                        update_child_bounds(&main_window, &child_webview);
+                        let win_delayed = main_window.clone();
+                        let webview_delayed = child_webview.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(150));
+                            update_child_bounds(&win_delayed, &webview_delayed);
+                            std::thread::sleep(std::time::Duration::from_millis(350));
+                            update_child_bounds(&win_delayed, &webview_delayed);
+                        });
+
+                        // Listen for window close, resize, scale, focus events
                         main_window.on_window_event(move |event| {
                             match event {
                                 tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -410,28 +434,10 @@ pub fn run() {
                                         let _ = main_win_clone.hide();
                                     }
                                 }
-                                tauri::WindowEvent::Resized(new_size) => {
-                                    let current_scale = main_win_clone.scale_factor().unwrap_or(1.0);
-                                    let titlebar_h_logical = 44.0;
-                                    let new_width_logical = new_size.width as f64 / current_scale;
-                                    let new_height_logical = (new_size.height as f64 / current_scale) - titlebar_h_logical;
-                                    let _ = webview_clone.set_position(tauri::Position::Logical(
-                                        tauri::LogicalPosition::new(0.0, titlebar_h_logical),
-                                    ));
-                                    let _ = webview_clone.set_size(tauri::Size::Logical(
-                                        tauri::LogicalSize::new(new_width_logical, new_height_logical.max(50.0)),
-                                    ));
-                                }
-                                tauri::WindowEvent::ScaleFactorChanged { scale_factor, new_inner_size, .. } => {
-                                    let titlebar_h_logical = 44.0;
-                                    let new_width_logical = new_inner_size.width as f64 / scale_factor;
-                                    let new_height_logical = (new_inner_size.height as f64 / scale_factor) - titlebar_h_logical;
-                                    let _ = webview_clone.set_position(tauri::Position::Logical(
-                                        tauri::LogicalPosition::new(0.0, titlebar_h_logical),
-                                    ));
-                                    let _ = webview_clone.set_size(tauri::Size::Logical(
-                                        tauri::LogicalSize::new(new_width_logical, new_height_logical.max(50.0)),
-                                    ));
+                                tauri::WindowEvent::Resized(_)
+                                | tauri::WindowEvent::ScaleFactorChanged { .. }
+                                | tauri::WindowEvent::Focused(true) => {
+                                    update_child_bounds(&main_win_clone, &webview_clone);
                                 }
                                 _ => {}
                             }
